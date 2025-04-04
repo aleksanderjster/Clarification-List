@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline Forum (JSON-Based)</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+
+    .thread {
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .closed {
+      background-color: #f8d7da;
+    }
+
+    .info {
+      background-color: #fff3cd;
+    }
+
+    .open {
+      background-color: #d4edda;
+    }
+
+    .highlight {
+      background-color: yellow;
+    }
+  </style>
+  <link rel="manifest" href="manifest.json">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.4/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-DQvkBjpPgn7RC31MCQoOeC9TI2kdqa4+BSgNMNj8v77fdC77Kj5zpWFTJaaAoMbC" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.4/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-YUe2LzesAfftltw+PEaao2tjU/QATaW/rOitAq67e0CT0Zi2VVRL0oC4+gAaeBKu"
+    crossorigin="anonymous"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("service-worker.js")
+          .then(() => console.log("Service Worker Registered"))
+          .catch(err => console.log("Service Worker Error:", err));
+      });
+    }
+  </script>
+</head>
+
+<body>
+
+  <div class="container text-center">
+    <div class="row mx-auto p-2 shadow mb-5 bg-body-tertiary rounded">
+      <h3>Package Clarification Log / Offline Forum (JSON-Based)</h3>
+      <!-- Button trigger modal -->
+      <form class="d-flex" role="search">
+        <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search" id="searchInput">
+        <button class="btn btn-outline-success" type="submit" onclick="searchThreads()">Search</button>
+      </form>
+
+      <div>
+        <button type="button" class="btn btn-primary col-3" data-bs-toggle="modal" data-bs-target="#exampleModal">
+          Publish new Issue
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!--
+  
+  <div class="col-sm-2 hstack gap-3">
+    <button type="button" class="btn btn-secondary">Submit</button>
+    <div class="vr"></div>
+    <button type="button" class="btn btn-outline-danger">Reset</button>
+  </div>
+
+-->
+
+  <!-- Issue Modal -->
+
+  <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 class="modal-title fs-5" id="exampleModalLabel">Issue / Clarification</h1>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="exampleFormControlInput1" class="form-label">Issue title:</label>
+            <input type="text" class="form-control" id="threadTitle" placeholder="Title of Issue">
+          </div>
+          <div class="mb-3">
+            <label for="exampleFormControlTextarea1" class="form-label">Issue:</label>
+            <textarea class="form-control" id="exampleFormControlTextarea1" rows="5"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" onclick="createThread()" data-bs-dismiss="modal">Publish</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- End of Issue Modal -->
+
+  <!-- 
+  <input type="text" id="threadTitle" placeholder="Enter thread title">
+  <button onclick="createThread()">Create Thread</button>
+-->
+  <br><br>
+
+
+
+  <br><br>
+
+  <button onclick="exportForum()">Save Forum (Download JSON)</button>
+  <input type="file" id="importFile" onchange="importForum(event)">
+  <button onclick="loadForum()">Reload Forum from JSON</button>
+
+  <h2>Threads</h2>
+  
+
+  <div id="forum"></div>
+
+
+
+
+
+  <script>
+
+    let forumData = { threads: [] };
+
+    async function loadForum() {
+      try {
+        let response = await fetch("forum.json");
+        if (!response.ok) throw new Error("forum.json not found.");
+        forumData = await response.json();
+        renderForum();
+      } catch (error) {
+        console.error("Error loading forum:", error);
+      }
+    }
+
+    function createThread() {
+      let title = document.getElementById("threadTitle").value.trim();
+      if (title === "") return alert("Thread title cannot be empty!");
+
+      forumData.threads.push({ id: Date.now(), title, status: "open", replies: [] });
+      document.getElementById("threadTitle").value = "";
+      renderForum();
+    }
+
+    // function loadForum() {
+    //     try {
+    //         let response = fetch("forum.json");
+    //         if (!response.ok) throw new Error("forum.json not found.");
+    //         forumData = response.json();
+    //         renderForum();
+    //     } catch (error) {
+    //         console.error("Error loading forum:", error);
+    //     }
+    // }
+
+    async function loadForum() {
+      try {
+        // Try fetching forum.json
+        let response = await fetch("forum.json");
+
+        if (!response.ok) {
+          throw new Error("forum.json not found or cannot be loaded.");
+        }
+
+        forumData = await response.json();
+        localStorage.setItem("forumBackup", JSON.stringify(forumData)); // Save backup in localStorage
+        console.log("Forum loaded from forum.json.");
+
+      } catch (error) {
+        console.warn("Failed to load forum.json. Trying localStorage...");
+
+        // Try loading from localStorage if fetch fails
+        let storedData = localStorage.getItem("forumBackup");
+        if (storedData) {
+          forumData = JSON.parse(storedData);
+          console.log("Forum loaded from localStorage.");
+        } else {
+          console.error("No forum data found.");
+          forumData = { threads: [] }; // Default empty forum
+        }
+      }
+
+      renderForum();
+    }
+
+    function renderForum() {
+      let forum = document.getElementById("forum");
+      forum.innerHTML = "";
+
+      forumData.threads.forEach(thread => {
+        let threadDiv = document.createElement("div");
+        threadDiv.className = `thread ${thread.status}`;
+        threadDiv.innerHTML = `
+                    <h3>
+                        <span id="title-${thread.id}">${thread.title}</span>
+                        <button onclick="editThreadTitle(${thread.id})">✏️ Edit</button>
+                    </h3>
+
+
+<ul class="nav nav-pills nav-fill gap-2 p-1 small bg-primary rounded-5 shadow-sm" id="pillNav2" role="tablist" style="--bs-nav-link-color: var(--bs-white); --bs-nav-pills-link-active-color: var(--bs-primary); --bs-nav-pills-link-active-bg: var(--bs-white);">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active rounded-5" id="home-tab2" data-bs-toggle="tab" type="button" role="tab" aria-selected="true">Home</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link rounded-5" id="profile-tab2" data-bs-toggle="tab" type="button" role="tab" aria-selected="false">Profile</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link rounded-5" id="contact-tab2" data-bs-toggle="tab" type="button" role="tab" aria-selected="false">Contact</button>
+  </li>
+</ul>
+
+
+<div class="dropdown">
+  <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+    Dropdown button
+  </button>
+  <ul class="dropdown-menu">
+    <li><a class="dropdown-item" href="#">Action</a></li>
+    <li><a class="dropdown-item" href="#">Another action</a></li>
+    <li><a class="dropdown-item" href="#">Something else here</a></li>
+  </ul>
+</div>
+
+<div class="btn-group dropend">
+  <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+    Dropend
+  </button>
+  <ul class="dropdown-menu">
+    <!-- Dropdown menu links -->
+  </ul>
+</div>
+
+<!-- Split dropend button -->
+<div class="btn-group dropend">
+  <button type="button" class="btn btn-secondary">
+    Split dropend
+  </button>
+  <button type="button" class="btn btn-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+    <span class="visually-hidden">Toggle Dropend</span>
+  </button>
+  <ul class="dropdown-menu">
+    <!-- Dropdown menu links -->
+  </ul>
+</div>
+
+
+
+                    <button onclick="changeStatus(${thread.id}, 'open')">Open</button>
+                    <button onclick="changeStatus(${thread.id}, 'closed')">Close</button>
+                    <button onclick="changeStatus(${thread.id}, 'info')">Info</button>
+                    <input type="text" id="reply-${thread.id}" placeholder="Your comment here!">
+                    <button onclick="postReply(${thread.id})">Post Reply</button>
+                    <div id="replies-${thread.id}">
+			
+
+
+
+
+
+                        ${thread.replies.map((r, index) => `
+                            <div class="card" style="width: 18rem;">
+  <div class="card-body">
+    <h6 class="card-subtitle mb-2 text-body-secondary">${thread.id}-${index}</h6>
+
+                                <span id="reply-text-${thread.id}-${index}">${r}</span>
+                                <button onclick="editReply(${thread.id}, ${index})">✏️ Edit</button>
+                            </div>
+</div>
+                        `).join("")}
+
+
+
+			
+                    </div>
+                `;
+        forum.appendChild(threadDiv);
+      });
+    }
+
+    function changeStatus(id, status) {
+      let thread = forumData.threads.find(t => t.id === id);
+      if (thread) {
+        thread.status = status;
+        renderForum();
+      }
+    }
+
+    function postReply(id) {
+      let replyInput = document.getElementById(`reply-${id}`);
+      let replyText = replyInput.value.trim();
+      if (replyText === "") return;
+
+      let thread = forumData.threads.find(t => t.id === id);
+      if (thread) {
+        thread.replies.push(replyText);
+        renderForum();
+      }
+    }
+
+    function editThreadTitle(id) {
+      let thread = forumData.threads.find(t => t.id === id);
+      if (thread) {
+        let newTitle = prompt("Edit thread title:", thread.title);
+        if (newTitle !== null && newTitle.trim() !== "") {
+          thread.title = newTitle.trim();
+          renderForum();
+        }
+      }
+    }
+
+    function editReply(threadId, replyIndex) {
+      let thread = forumData.threads.find(t => t.id === threadId);
+      if (thread && thread.replies[replyIndex] !== undefined) {
+        let newReply = prompt("Edit reply:", thread.replies[replyIndex]);
+        if (newReply !== null && newReply.trim() !== "") {
+          thread.replies[replyIndex] = newReply.trim();
+          renderForum();
+        }
+      }
+    }
+
+    function searchThreads() {
+      let query = document.getElementById("searchInput").value.toLowerCase();
+      let forum = document.getElementById("forum");
+      forum.innerHTML = "";
+
+      forumData.threads.forEach(thread => {
+        let highlightedTitle = highlightText(thread.title, query);
+        let highlightedReplies = thread.replies.map(r => highlightText(r, query)).join("");
+
+        if (thread.title.toLowerCase().includes(query) || thread.replies.some(r => r.toLowerCase().includes(query))) {
+          let threadDiv = document.createElement("div");
+          threadDiv.className = `thread ${thread.status}`;
+          threadDiv.innerHTML = `
+                        <h3>
+                            <span id="title-${thread.id}">${highlightedTitle}</span>
+                            <button onclick="editThreadTitle(${thread.id})">✏️ Edit</button>
+                        </h3>
+                        <button onclick="changeStatus(${thread.id}, 'open')">Open</button>
+                        <button onclick="changeStatus(${thread.id}, 'closed')">Close</button>
+                        <button onclick="changeStatus(${thread.id}, 'info')">Info</button>
+                        <input type="text" id="reply-${thread.id}" placeholder="Reply">
+                        <button onclick="postReply(${thread.id})">Post Reply</button>
+                        <div id="replies-${thread.id}">
+                            ${highlightedReplies}
+                        </div>
+                    `;
+          forum.appendChild(threadDiv);
+        }
+      });
+    }
+
+    function highlightText(text, query) {
+      if (!query) return text;
+      let regex = new RegExp(`(${query})`, "gi");
+      return text.replace(regex, `<span class="highlight">$1</span>`);
+    }
+
+    function exportForum() {
+      let jsonStr = JSON.stringify(forumData, null, 2);
+      let blob = new Blob([jsonStr], { type: "application/json" });
+      let a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "forum.json";
+      a.click();
+    }
+
+    function importForum(event) {
+      let file = event.target.files[0];
+      if (!file) return;
+
+      let reader = new FileReader();
+      reader.onload = function (e) {
+        try {
+          forumData = JSON.parse(e.target.result);
+          renderForum();
+        } catch (error) {
+          alert("Invalid JSON file!");
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    loadForum();
+  </script>
+
+<!-- Buttons group
+  <a class="btn btn-primary" href="#" role="button">Link</a>
+  <button class="btn btn-primary" type="submit">Button</button>
+  <input class="btn btn-primary" type="button" value="Input">
+  <input class="btn btn-primary" type="submit" value="Submit">
+  <input class="btn btn-primary" type="reset" value="Reset">
+
+  <button type="button" class="btn btn-outline-primary">Primary</button>
+  <button type="button" class="btn btn-outline-secondary">Secondary</button>
+  <button type="button" class="btn btn-outline-success">Success</button>
+  <button type="button" class="btn btn-outline-danger">Danger</button>
+  <button type="button" class="btn btn-outline-warning">Warning</button>
+  <button type="button" class="btn btn-outline-info">Info</button>
+  <button type="button" class="btn btn-outline-light">Light</button>
+  <button type="button" class="btn btn-outline-dark">Dark</button>
+
+  <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
+    <input type="radio" class="btn-check" name="btnradio" id="btnradio1" autocomplete="off" checked>
+    <label class="btn btn-outline-primary" for="btnradio1">Radio 1</label>
+
+    <input type="radio" class="btn-check" name="btnradio" id="btnradio2" autocomplete="off">
+    <label class="btn btn-outline-primary" for="btnradio2">Radio 2</label>
+
+    <input type="radio" class="btn-check" name="btnradio" id="btnradio3" autocomplete="off">
+    <label class="btn btn-outline-primary" for="btnradio3">Radio 3</label>
+  </div>
+
+  <button type="button" class="btn btn-primary position-relative">
+    Inbox
+    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+      99+
+      <span class="visually-hidden">unread messages</span>
+    </span>
+  </button>
+
+End of buttons group -->
+
+
+
+
+
+
+  <!-- Modal group 
+
+  <div class="modal fade" id="exampleModalToggle" aria-hidden="true" aria-labelledby="exampleModalToggleLabel"
+    tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 class="modal-title fs-5" id="exampleModalToggleLabel">Modal 1</h1>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          Show a second modal and hide this one with the button below.
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" data-bs-target="#exampleModalToggle2" data-bs-toggle="modal">Open second
+            modal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal fade" id="exampleModalToggle2" aria-hidden="true" aria-labelledby="exampleModalToggleLabel2"
+    tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 class="modal-title fs-5" id="exampleModalToggleLabel2">Modal 2</h1>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          Hide this modal and show the first with the button below.
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" data-bs-target="#exampleModalToggle" data-bs-toggle="modal">Back to
+            first</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <button class="btn btn-primary" data-bs-target="#exampleModalToggle" data-bs-toggle="modal">Open first modal</button>
+
+End of Modal group-->
+
+
+
+<!-- 
+  <div class="accordion accordion-flush" id="accordionFlushExample">
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+          data-bs-target="#flush-collapseOne" aria-expanded="false" aria-controls="flush-collapseOne">
+          Accordion Item #1
+        </button>
+      </h2>
+      <div id="flush-collapseOne" class="accordion-collapse collapse" data-bs-parent="#accordionFlushExample">
+        <div class="accordion-body">Placeholder content for this accordion, which is intended to demonstrate the
+          <code>.accordion-flush</code> class. This is the first item's accordion body.
+        </div>
+      </div>
+    </div>
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+          data-bs-target="#flush-collapseTwo" aria-expanded="false" aria-controls="flush-collapseTwo">
+          Accordion Item #2
+        </button>
+      </h2>
+      <div id="flush-collapseTwo" class="accordion-collapse collapse" data-bs-parent="#accordionFlushExample">
+        <div class="accordion-body">Placeholder content for this accordion, which is intended to demonstrate the
+          <code>.accordion-flush</code> class. This is the second item's accordion body. Let's imagine this being filled
+          with some actual content.
+        </div>
+      </div>
+    </div>
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+          data-bs-target="#flush-collapseThree" aria-expanded="false" aria-controls="flush-collapseThree">
+          Accordion Item #3
+        </button>
+      </h2>
+      <div id="flush-collapseThree" class="accordion-collapse collapse" data-bs-parent="#accordionFlushExample">
+        <div class="accordion-body">Placeholder content for this accordion, which is intended to demonstrate the
+          <code>.accordion-flush</code> class. This is the third item's accordion body. Nothing more exciting happening
+          here in terms of content, but just filling up the space to make it look, at least at first glance, a bit more
+          representative of how this would look in a real-world application.
+        </div>
+      </div>
+    </div>
+  </div>
+
+-->
+
+
+<!--
+
+  <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasBottom"
+    aria-controls="offcanvasBottom">Toggle bottom offcanvas</button>
+
+  <div class="offcanvas offcanvas-bottom" tabindex="-1" id="offcanvasBottom" aria-labelledby="offcanvasBottomLabel">
+    <div class="offcanvas-header">
+      <h5 class="offcanvas-title" id="offcanvasBottomLabel">Offcanvas bottom</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body small">
+      ...
+    </div>
+  </div>
+
+-->
+
+
+</body>
+
+</html>

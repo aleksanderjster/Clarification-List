@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline Forum (JSON-Based)</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .thread { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+        .closed { background-color: #f8d7da; }
+        .info { background-color: #fff3cd; }
+        .open { background-color: #d4edda; }
+        .highlight { background-color: yellow; }
+    </style>
+</head>
+<body>
+    <h1>Offline Forum (JSON-Based)</h1>
+
+    <input type="text" id="threadTitle" placeholder="Enter thread title">
+    <button onclick="createThread()">Create Thread</button>
+
+    <br><br>
+
+    <input type="text" id="searchInput" placeholder="Search threads and replies">
+    <button onclick="searchThreads()">Search</button>
+
+    <br><br>
+
+    <button onclick="exportForum()">Save Forum (Download JSON)</button>
+    <input type="file" id="importFile" onchange="importForum(event)">
+    <button onclick="loadForum()">Reload Forum from JSON</button>
+
+    <h2>Threads</h2>
+    <div id="forum"></div>
+
+    <script>
+        let forumData = { threads: [] };
+
+        async function loadForum() {
+            try {
+                let response = await fetch("forum.json");
+                if (!response.ok) throw new Error("forum.json not found.");
+                forumData = await response.json();
+                renderForum();
+            } catch (error) {
+                console.error("Error loading forum:", error);
+            }
+        }
+
+        function createThread() {
+            let title = document.getElementById("threadTitle").value.trim();
+            if (title === "") return alert("Thread title cannot be empty!");
+
+            forumData.threads.push({ id: Date.now(), title, status: "open", replies: [] });
+            document.getElementById("threadTitle").value = "";
+            renderForum();
+        }
+
+        // function loadForum() {
+        //     try {
+        //         let response = fetch("forum.json");
+        //         if (!response.ok) throw new Error("forum.json not found.");
+        //         forumData = response.json();
+        //         renderForum();
+        //     } catch (error) {
+        //         console.error("Error loading forum:", error);
+        //     }
+        // }
+
+        async function loadForum() {
+            try {
+                // Try fetching forum.json
+                let response = await fetch("forum.json");
+                
+                if (!response.ok) {
+                    throw new Error("forum.json not found or cannot be loaded.");
+                }
+                
+                forumData = await response.json();
+                localStorage.setItem("forumBackup", JSON.stringify(forumData)); // Save backup in localStorage
+                console.log("Forum loaded from forum.json.");
+                
+            } catch (error) {
+                console.warn("Failed to load forum.json. Trying localStorage...");
+                
+                // Try loading from localStorage if fetch fails
+                let storedData = localStorage.getItem("forumBackup");
+                if (storedData) {
+                    forumData = JSON.parse(storedData);
+                    console.log("Forum loaded from localStorage.");
+                } else {
+                    console.error("No forum data found.");
+                    forumData = { threads: [] }; // Default empty forum
+                }
+            }
+            
+            renderForum();
+        }
+
+        function renderForum() {
+            let forum = document.getElementById("forum");
+            forum.innerHTML = "";
+
+            forumData.threads.forEach(thread => {
+                let threadDiv = document.createElement("div");
+                threadDiv.className = `thread ${thread.status}`;
+                threadDiv.innerHTML = `
+                    <h3>
+                        <span id="title-${thread.id}">${thread.title}</span>
+                        <button onclick="editThreadTitle(${thread.id})">✏️ Edit</button>
+                    </h3>
+                    <button onclick="changeStatus(${thread.id}, 'open')">Open</button>
+                    <button onclick="changeStatus(${thread.id}, 'closed')">Close</button>
+                    <button onclick="changeStatus(${thread.id}, 'info')">Info</button>
+                    <input type="text" id="reply-${thread.id}" placeholder="Reply">
+                    <button onclick="postReply(${thread.id})">Post Reply</button>
+                    <div id="replies-${thread.id}">
+                        ${thread.replies.map((r, index) => `
+                            <p>
+                                <span id="reply-text-${thread.id}-${index}">${r}</span>
+                                <button onclick="editReply(${thread.id}, ${index})">✏️ Edit</button>
+                            </p>
+                        `).join("")}
+                    </div>
+                `;
+                forum.appendChild(threadDiv);
+            });
+        }
+
+        function changeStatus(id, status) {
+            let thread = forumData.threads.find(t => t.id === id);
+            if (thread) {
+                thread.status = status;
+                renderForum();
+            }
+        }
+
+        function postReply(id) {
+            let replyInput = document.getElementById(`reply-${id}`);
+            let replyText = replyInput.value.trim();
+            if (replyText === "") return;
+
+            let thread = forumData.threads.find(t => t.id === id);
+            if (thread) {
+                thread.replies.push(replyText);
+                renderForum();
+            }
+        }
+
+        function editThreadTitle(id) {
+            let thread = forumData.threads.find(t => t.id === id);
+            if (thread) {
+                let newTitle = prompt("Edit thread title:", thread.title);
+                if (newTitle !== null && newTitle.trim() !== "") {
+                    thread.title = newTitle.trim();
+                    renderForum();
+                }
+            }
+        }
+
+        function editReply(threadId, replyIndex) {
+            let thread = forumData.threads.find(t => t.id === threadId);
+            if (thread && thread.replies[replyIndex] !== undefined) {
+                let newReply = prompt("Edit reply:", thread.replies[replyIndex]);
+                if (newReply !== null && newReply.trim() !== "") {
+                    thread.replies[replyIndex] = newReply.trim();
+                    renderForum();
+                }
+            }
+        }
+
+        function searchThreads() {
+            let query = document.getElementById("searchInput").value.toLowerCase();
+            let forum = document.getElementById("forum");
+            forum.innerHTML = "";
+
+            forumData.threads.forEach(thread => {
+                let highlightedTitle = highlightText(thread.title, query);
+                let highlightedReplies = thread.replies.map(r => highlightText(r, query)).join("");
+
+                if (thread.title.toLowerCase().includes(query) || thread.replies.some(r => r.toLowerCase().includes(query))) {
+                    let threadDiv = document.createElement("div");
+                    threadDiv.className = `thread ${thread.status}`;
+                    threadDiv.innerHTML = `
+                        <h3>
+                            <span id="title-${thread.id}">${highlightedTitle}</span>
+                            <button onclick="editThreadTitle(${thread.id})">✏️ Edit</button>
+                        </h3>
+                        <button onclick="changeStatus(${thread.id}, 'open')">Open</button>
+                        <button onclick="changeStatus(${thread.id}, 'closed')">Close</button>
+                        <button onclick="changeStatus(${thread.id}, 'info')">Info</button>
+                        <input type="text" id="reply-${thread.id}" placeholder="Reply">
+                        <button onclick="postReply(${thread.id})">Post Reply</button>
+                        <div id="replies-${thread.id}">
+                            ${highlightedReplies}
+                        </div>
+                    `;
+                    forum.appendChild(threadDiv);
+                }
+            });
+        }
+
+        function highlightText(text, query) {
+            if (!query) return text;
+            let regex = new RegExp(`(${query})`, "gi");
+            return text.replace(regex, `<span class="highlight">$1</span>`);
+        }
+
+        function exportForum() {
+            let jsonStr = JSON.stringify(forumData, null, 2);
+            let blob = new Blob([jsonStr], { type: "application/json" });
+            let a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "forum.json";
+            a.click();
+        }
+
+        function importForum(event) {
+            let file = event.target.files[0];
+            if (!file) return;
+
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    forumData = JSON.parse(e.target.result);
+                    renderForum();
+                } catch (error) {
+                    alert("Invalid JSON file!");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        loadForum();
+    </script>
+</body>
+</html>
